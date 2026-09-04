@@ -221,7 +221,7 @@ static BOOL isLockIndicatorEnabled;
     if (immortalizerEnabled) {
         Immortalizer *immortalizer = [Immortalizer sharedInstance];
         if ([immortalizer isNotificationEnabledForBundleIdentifier:arg2]) {
-            [self _didChangeApplicationState:4 forBundleIdentifier:arg2];
+            // [self _didChangeApplicationState:4 forBundleIdentifier:arg2];
         }
     }
     %orig;
@@ -294,6 +294,8 @@ static void immortalizerPreferencesChanged() {
 }
 
 static void prefsNotifsChanged() {
+    // Disabled for iOS 18.7 compatibility
+    /*
     Immortalizer *immortalizer = [Immortalizer sharedInstance];
     NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
     for (NSString * immortalApp in immortalBundleIDs) {
@@ -303,6 +305,7 @@ static void prefsNotifsChanged() {
             [[%c(UNSUserNotificationServer) sharedInstance] _didChangeApplicationState:8 forBundleIdentifier:immortalApp];
         }
     }
+    */
 }
 
 static void prefsIndicatorChanged() {
@@ -319,7 +322,7 @@ static id observer;
 static void loadAllImmortalizerPrefs() {
     observer = [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *_) {
         immortalizerPreferencesChanged();
-        prefsNotifsChanged();
+        // prefsNotifsChanged();
         prefsIndicatorChanged();
         prefsToastChanged();
         prefsLockIndicatorChanged();
