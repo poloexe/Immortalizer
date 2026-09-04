@@ -199,15 +199,6 @@ static BOOL isLockIndicatorEnabled;
     }
 }
 
-- (BOOL)isForeground {
-    if (immortalizerEnabled) {
-        NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
-        if ([immortalBundleIDs containsObject:self.bundleIdentifier]) {
-            return YES;
-        }
-    }
-    return %orig;
-}
 %end
 
 %hook SBFolderView
@@ -243,6 +234,7 @@ static BOOL isLockIndicatorEnabled;
         return;
     %orig;
 }
+
 %end
 
 %hook SBFluidSwitcherItemContainer
@@ -290,14 +282,22 @@ static BOOL isLockIndicatorEnabled;
     }
     return %orig;
 }
-%end
 
-%hook FBApplicationProcess
-- (BOOL)isForeground {
+- (BOOL)isRunning {
     if (immortalizerEnabled) {
         NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
         if ([immortalBundleIDs containsObject:self.bundleIdentifier]) {
             return YES;
+        }
+    }
+    return %orig;
+}
+
+- (BOOL)isPendingExit {
+    if (immortalizerEnabled) {
+        NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
+        if ([immortalBundleIDs containsObject:self.bundleIdentifier]) {
+            return NO;
         }
     }
     return %orig;
@@ -326,7 +326,7 @@ static void immortalizerPreferencesChanged() {
 }
 
 static void prefsNotifsChanged() {
-    // Disabled for iOS 18.7 compatibility
+    // Disabled for iOS 18.7.1 compatibility
 }
 
 static void prefsIndicatorChanged() {
