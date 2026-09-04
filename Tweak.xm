@@ -126,18 +126,18 @@ static BOOL isLockIndicatorEnabled;
         }
 
         if ([immortalBundleIDs containsObject:bundleID]) {
-			SBApplication *app = [[%c(SBApplicationController) sharedInstance] applicationWithBundleIdentifier:bundleID];
-			if (app.processState != nil) [[%c(FBSSystemService) sharedService] openApplication:bundleID options:nil withResult:nil];
+            SBApplication *app = [[%c(SBApplicationController) sharedInstance] applicationWithBundleIdentifier:bundleID];
+            if (app.processState != nil) [[%c(FBSSystemService) sharedService] openApplication:bundleID options:nil withResult:nil];
             if (isToastEnabled) [immortalizer showToastWithTitle:[immortalizer getAppNameForBundle:bundleID] subtitle:localizer(@"AT_REST") icon:[UIImage systemImageNamed:@"arrow.uturn.left.circle.fill"] autoHide:3.0];
             [immortalBundleIDs removeObject:bundleID];
-			
+            
         } else { 
             if (isToastEnabled) [immortalizer showToastWithTitle:[immortalizer getAppNameForBundle:bundleID] subtitle:localizer(@"IMMORTALIZED") icon:[UIImage systemImageNamed:@"hourglass.bottomhalf.fill"] autoHide:3.0];
-			[[%c(FBSSystemService) sharedService] openApplication:bundleID options:nil withResult:nil];
+            [[%c(FBSSystemService) sharedService] openApplication:bundleID options:nil withResult:nil];
             [immortalBundleIDs addObject:bundleID];
         }
-        	[[NSUserDefaults standardUserDefaults] setObject:immortalBundleIDs forKey:@"ImmortalForegroundBundleIDs"];
-        	[[NSUserDefaults standardUserDefaults] synchronize];
+            [[NSUserDefaults standardUserDefaults] setObject:immortalBundleIDs forKey:@"ImmortalForegroundBundleIDs"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
             [immortalizer updateAccessoryForBundle:bundleID];
     } else {
         %orig;
@@ -187,7 +187,7 @@ static BOOL isLockIndicatorEnabled;
 }
 
 -(void)_didExitWithContext:(id)arg1 {
-	%orig;
+    %orig;
     if (immortalizerEnabled) {
         Immortalizer *immortalizer = [Immortalizer sharedInstance];
         [immortalizer updateAccessoryForBundle:self.bundleIdentifier];
@@ -269,6 +269,18 @@ static BOOL isLockIndicatorEnabled;
     }
 
     %orig(shouldTerminate);
+}
+%end
+
+%hook FBProcess
+- (BOOL)isForeground {
+    if (immortalizerEnabled) {
+        NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
+        if ([immortalBundleIDs containsObject:self.bundleIdentifier]) {
+            return YES;
+        }
+    }
+    return %orig;
 }
 %end
 
