@@ -199,6 +199,15 @@ static BOOL isLockIndicatorEnabled;
     }
 }
 
+- (BOOL)isForeground {
+    if (immortalizerEnabled) {
+        NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
+        if ([immortalBundleIDs containsObject:self.bundleIdentifier]) {
+            return YES;
+        }
+    }
+    return %orig;
+}
 %end
 
 %hook SBFolderView
@@ -234,7 +243,6 @@ static BOOL isLockIndicatorEnabled;
         return;
     %orig;
 }
-
 %end
 
 %hook SBFluidSwitcherItemContainer
@@ -284,6 +292,18 @@ static BOOL isLockIndicatorEnabled;
 }
 %end
 
+%hook FBApplicationProcess
+- (BOOL)isForeground {
+    if (immortalizerEnabled) {
+        NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
+        if ([immortalBundleIDs containsObject:self.bundleIdentifier]) {
+            return YES;
+        }
+    }
+    return %orig;
+}
+%end
+
 %end
 
 static void prefsLockIndicatorChanged() {
@@ -307,17 +327,6 @@ static void immortalizerPreferencesChanged() {
 
 static void prefsNotifsChanged() {
     // Disabled for iOS 18.7 compatibility
-    /*
-    Immortalizer *immortalizer = [Immortalizer sharedInstance];
-    NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
-    for (NSString * immortalApp in immortalBundleIDs) {
-        if ([immortalizer isNotificationEnabledForBundleIdentifier:immortalApp]) {
-            [[%c(UNSUserNotificationServer) sharedInstance] _didChangeApplicationState:4 forBundleIdentifier:immortalApp];
-        } else {
-            [[%c(UNSUserNotificationServer) sharedInstance] _didChangeApplicationState:8 forBundleIdentifier:immortalApp];
-        }
-    }
-    */
 }
 
 static void prefsIndicatorChanged() {
@@ -334,7 +343,6 @@ static id observer;
 static void loadAllImmortalizerPrefs() {
     observer = [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidFinishLaunchingNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *_) {
         immortalizerPreferencesChanged();
-        // prefsNotifsChanged();
         prefsIndicatorChanged();
         prefsToastChanged();
         prefsLockIndicatorChanged();
