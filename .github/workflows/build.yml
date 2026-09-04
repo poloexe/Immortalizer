@@ -1,0 +1,78 @@
+name: Build Tweak
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Theos
+        uses: Randomblock1/theos-action@v1
+
+      - name: Install iOS 14.5 SDK
+        run: |
+          git clone --depth 1 https://github.com/theos/sdks.git /tmp/sdks
+          cp -a /tmp/sdks/iPhoneOS14.5.sdk $THEOS/sdks/
+
+      - name: Brute-Force Patch Source Code
+        run: |
+          # 1. Create a fully populated dummy interface to satisfy the compiler
+          cat << 'EOF' > patch.h
+          #ifndef DUMMY_CCUI_H
+          #define DUMMY_CCUI_H
+          #import <UIKit/UIKit.h>
+          @interface CCUIMenuModuleViewController : UIViewController
+          @property (nonatomic, strong) UIImage *glyphImage;
+          @property (nonatomic, strong) UIImage *selectedGlyphImage;
+          @property (nonatomic, strong) UIColor *selectedGlyphColor;
+          - (void)setSelected:(BOOL)selected;
+          - (void)addActionWithTitle:(NSString *)title subtitle:(NSString *)subtitle glyph:(UIImage *)glyph handler:(void (^)(void))handler;
+          @end
+          #endif
+          EOF
+          
+          # 2. Globally remove the broken Apple import
+          find . -type f \( -name "*.h" -o -name "*.m" \) -exec perl -pi -e 's|#import <ControlCenterUIKit/CCUIMenuModuleViewController.h>||g' {} +
+          
+          # 3. Inject the populated dummy interface into the headers
+          for file in $(find . -name "ImmortalizerCCMenu.h" -o -name "ImmortalizerCC.h"); do
+            cat patch.h "$file" > temp.h
+            mv temp.h "$file"
+          done
+
+      - name: Compile and Install AltList Dependency
+        run: |
+          git clone https://github.com/opa334/AltList.git /tmp/AltList
+          cd /tmp/AltList
+          make FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless TARGET="iphone:14.5:14.0" -j$(sysctl -n hw.ncpu)
+          
+          mkdir -p $THEOS/include/AltList
+          cp *.h $THEOS/include/AltList/
+          
+          FRAMEWORK_PATH=$(find .theos/obj -type d -name "AltList.framework" | head -n 1)
+          mkdir -p $THEOS/lib/iphone/rootless
+          cp -R "$FRAMEWORK_PATH" $THEOS/lib/iphone/rootless/
+          cp -R "$FRAMEWORK_PATH" $THEOS/lib/
+
+      - name: Build Tweak Package
+        run: |
+          mkdir -p packages
+          export THEOS_PACKAGE_DIR=$PWD/packages
+          export ADDITIONAL_FRAMEWORK_DIRS=$THEOS/lib
+          export ADDITIONAL_LDFLAGS="-F$THEOS/lib -F$THEOS/lib/iphone/rootless"
+          
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless TARGET="iphone:14.5:14.0" -j$(sysctl -n hw.ncpu)
+
+      - name: Upload Deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: Immortalizer-Rootless
+          path: packages/*.deb
