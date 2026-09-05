@@ -28,6 +28,23 @@ static BOOL isFolderTransitioning = false;
 static BOOL isIndicatorEnabled;
 static BOOL isToastEnabled;
 static BOOL isLockIndicatorEnabled;
+static BOOL isCurrentAppImmortalized = NO;
+
+// Helper to check if the app we are injected into is immortalized
+static void updateAppImmortalState() {
+    NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
+    if (bundleID && ![bundleID isEqualToString:@"com.apple.springboard"]) {
+        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.sergy.immortalizer.prefs"];
+        NSArray *immortalBundleIDs = [defaults arrayForKey:@"ImmortalForegroundBundleIDs"];
+        
+        // Rootless fallback for sandboxed apps
+        if (!immortalBundleIDs) {
+            NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:@"/var/jb/var/mobile/Library/Preferences/com.sergy.immortalizer.prefs.plist"];
+            immortalBundleIDs = prefs[@"ImmortalForegroundBundleIDs"];
+        }
+        isCurrentAppImmortalized = [immortalBundleIDs containsObject:bundleID];
+    }
+}
 
 %group init
 
@@ -304,7 +321,34 @@ static BOOL isLockIndicatorEnabled;
 }
 %end
 
+%end // end init group
+
+%group AppHook
+%hook UIApplication
+- (UIApplicationState)applicationState {
+    if (isCurrentAppImmortalized) {
+        return UIApplicationStateActive;
+    }
+    return %orig;
+}
+
+- (NSTimeInterval)backgroundTimeRemaining {
+    if (isCurrentAppImmortalized) {
+        return DBL_MAX;
+    }
+    return %orig;
+}
 %end
+
+%hook UIWindowScene
+- (UISceneActivationState)activationState {
+    if (isCurrentAppImmortalized) {
+        return UISceneActivationStateForegroundActive;
+    }
+    return %orig;
+}
+%end
+%end // end AppHook
 
 static void prefsLockIndicatorChanged() {
     Immortalizer *immortalizer = [Immortalizer sharedInstance];
@@ -316,13 +360,18 @@ static void prefsLockIndicatorChanged() {
 }
 
 static void immortalizerPreferencesChanged() {
-    Immortalizer *immortalizer = [Immortalizer sharedInstance];
-    NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
-    NSUserDefaults *const prefs = [[NSUserDefaults alloc] initWithSuiteName:@"com.sergy.immortalizer.prefs"];
-    immortalizerEnabled = [prefs objectForKey:@"isEnabled"] ? [prefs boolForKey:@"isEnabled"] : YES;
+    NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
+    if ([bundleID isEqualToString:@"com.apple.springboard"]) {
+        Immortalizer *immortalizer = [Immortalizer sharedInstance];
+        NSArray *immortalBundleIDs = [[NSUserDefaults standardUserDefaults] arrayForKey:@"ImmortalForegroundBundleIDs"];
+        NSUserDefaults *const prefs = [[NSUserDefaults alloc] initWithSuiteName:@"com.sergy.immortalizer.prefs"];
+        immortalizerEnabled = [prefs objectForKey:@"isEnabled"] ? [prefs boolForKey:@"isEnabled"] : YES;
         for (NSString *bundleIdentifier in immortalBundleIDs) 
             [immortalizer updateAccessoryForBundle:bundleIdentifier];
-    notify_post("com.sergy.immortalizer.updatecc");
+        notify_post("com.sergy.immortalizer.updatecc");
+    } else {
+        updateAppImmortalState();
+    }
 }
 
 static void prefsNotifsChanged() {
@@ -351,11 +400,19 @@ static void loadAllImmortalizerPrefs() {
 }
 
 %ctor {
-    %init(init);
-    loadAllImmortalizerPrefs();
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)immortalizerPreferencesChanged, CFSTR("com.sergy.immortalizer.preferenceschanged"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsNotifsChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.notifs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsIndicatorChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.indicator"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsToastChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.toast"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsLockIndicatorChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.lockindicator"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
+    if ([bundleID isEqualToString:@"com.apple.springboard"]) {
+        %init(init);
+        loadAllImmortalizerPrefs();
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)immortalizerPreferencesChanged, CFSTR("com.sergy.immortalizer.preferenceschanged"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsNotifsChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.notifs"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsIndicatorChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.indicator"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsToastChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.toast"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsLockIndicatorChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.lockindicator"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    } else {
+        // App Injection Logic
+        updateAppImmortalState();
+        %init(AppHook);
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)updateAppImmortalState, CFSTR("com.sergy.immortalizer.preferenceschanged"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
+    }
 }
