@@ -30,19 +30,15 @@ static BOOL isToastEnabled;
 static BOOL isLockIndicatorEnabled;
 static BOOL isCurrentAppImmortalized = NO;
 
-// Helper to check if the app we are injected into is immortalized
 static void updateAppImmortalState() {
     NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
     if (bundleID && ![bundleID isEqualToString:@"com.apple.springboard"]) {
-        NSUserDefaults *defaults = [[NSUserDefaults alloc] initWithSuiteName:@"com.sergy.immortalizer.prefs"];
-        NSArray *immortalBundleIDs = [defaults arrayForKey:@"ImmortalForegroundBundleIDs"];
-        
-        // Rootless fallback for sandboxed apps
-        if (!immortalBundleIDs) {
-            NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:@"/var/jb/var/mobile/Library/Preferences/com.sergy.immortalizer.prefs.plist"];
-            immortalBundleIDs = prefs[@"ImmortalForegroundBundleIDs"];
+        CFPropertyListRef value = CFPreferencesCopyAppValue(CFSTR("ImmortalForegroundBundleIDs"), CFSTR("com.sergy.immortalizer.prefs"));
+        if (value && CFGetTypeID(value) == CFArrayGetTypeID()) {
+            NSArray *immortalBundleIDs = (__bridge NSArray *)value;
+            isCurrentAppImmortalized = [immortalBundleIDs containsObject:bundleID];
         }
-        isCurrentAppImmortalized = [immortalBundleIDs containsObject:bundleID];
+        if (value) CFRelease(value);
     }
 }
 
@@ -326,26 +322,28 @@ static void updateAppImmortalState() {
 %group AppHook
 %hook UIApplication
 - (UIApplicationState)applicationState {
-    if (isCurrentAppImmortalized) {
-        return UIApplicationStateActive;
-    }
-    return %orig;
+    return isCurrentAppImmortalized ? UIApplicationStateActive : %orig;
 }
 
 - (NSTimeInterval)backgroundTimeRemaining {
+    return isCurrentAppImmortalized ? DBL_MAX : %orig;
+}
+
+- (void)applicationDidEnterBackground:(UIApplication *)application {
     if (isCurrentAppImmortalized) {
-        return DBL_MAX;
+        __block UIBackgroundTaskIdentifier bgTask;
+        bgTask = [application beginBackgroundTaskWithName:@"ImmortalizerTask" expirationHandler:^{
+            [application endBackgroundTask:bgTask];
+            bgTask = UIBackgroundTaskInvalid;
+        }];
     }
-    return %orig;
+    %orig;
 }
 %end
 
 %hook UIWindowScene
 - (UISceneActivationState)activationState {
-    if (isCurrentAppImmortalized) {
-        return UISceneActivationStateForegroundActive;
-    }
-    return %orig;
+    return isCurrentAppImmortalized ? UISceneActivationStateForegroundActive : %orig;
 }
 %end
 %end // end AppHook
@@ -410,7 +408,6 @@ static void loadAllImmortalizerPrefs() {
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsToastChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.toast"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)prefsLockIndicatorChanged, CFSTR("com.sergy.immortalizer.preferenceschanged.lockindicator"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
     } else {
-        // App Injection Logic
         updateAppImmortalState();
         %init(AppHook);
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)updateAppImmortalState, CFSTR("com.sergy.immortalizer.preferenceschanged"), NULL, CFNotificationSuspensionBehaviorDeliverImmediately);
