@@ -332,10 +332,10 @@ static void updateAppImmortalState() {
 - (void)applicationDidEnterBackground:(UIApplication *)application {
     if (isCurrentAppImmortalized) {
         __block UIBackgroundTaskIdentifier bgTask;
-        bgTask = [application beginBackgroundTaskWithName:@"ImmortalizerTask" expirationHandler:^{
-            [application endBackgroundTask:bgTask];
-            bgTask = UIBackgroundTaskInvalid;
+        bgTask = [application beginBackgroundTaskWithName:@"ImmortalizerInfiniteTask" expirationHandler:^{
+            // Do not end the task when Jetsam requests expiration
         }];
+        return;
     }
     %orig;
 }
